@@ -21,19 +21,21 @@ class FlexRemoteApiJob(db.Model):
     # start-stop-position, and so on...
 
 
-class FlexRemoteApiWorker(webapp.RequestHandler):
+class FlexRemoteApiExecuteCallHandler(webapp.RequestHandler):
     def post(self):
         job = FlexRemoteApiJob.get_by_id(int(self.request.get('id')))
-        if job is None:
+        if not job:
             self.response.set_status(404)
             return
-        if job.started_at is not None:
+        if job.started_at:
             self.response.set_status(304)
             return
         exec definitions
-        post.func_globals.update(pickle.loads(job.context))
         ep_func = pickle.loads(job.entrypoint_function)
         ep_args = pickle.loads(job.entrypoint_arguments)
+        # post.func_globals.update(pickle.loads(job.context))
+        # _global_context = pickle.loads(job.context)
+        ep_func.func_globals.update(pickle.loads(job.context))
 
         job.started_at = datetime.datetime.now()
         job.put()
@@ -51,6 +53,9 @@ class FlexRemoteApiCreateCallHandler(webapp.RequestHandler):
             context = req.get('context'),
             entrypoint_function = req.get('entrypoint_function'),
             entrypoint_arguments = req.get('entrypoint_arguments'))
+        if not job.entrypoint_function:
+            self.response.set_status(406)
+            return
         job.put()
         taskqueue.add(name='exec_flex_remote_api_job',
                       url='/_ex_ah/flex_remote_api/execute',
@@ -61,9 +66,9 @@ class FlexRemoteApiCreateCallHandler(webapp.RequestHandler):
 class FlexRemoteApiStatusCallHandler(webapp.RequestHandler):
     def get(self):
         job = FlexRemoteApiJob.get_by_id(self.request.get('id'))
-        if job is None:
+        if not job:
             self.response.set_status(404)
-        elif job.finished_at is None:
+        elif not job.finished_at:
             self.response.set_status(304)
         else:
             self.response.set_status(200)
@@ -73,7 +78,7 @@ class FlexRemoteApiStatusCallHandler(webapp.RequestHandler):
 application = webapp.WSGIApplication([
     ('/_ex_ah/flex_remote_api/create', FlexRemoteApiCreateCallHandler),
     ('/_ex_ah/flex_remote_api/status', FlexRemoteApiStatusCallHandler),
-    ('/_ex_ah/flex_remote_api/execute', FlexRemoteApiWorker),
+    ('/_ex_ah/flex_remote_api/execute', FlexRemoteApiExecuteCallHandler),
     ],
     debug=True)
 

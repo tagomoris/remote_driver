@@ -1,5 +1,5 @@
 queue:
-- name: exec_flex_remote_api_job
+- name: FlexRemoteApiJob
   rate: 1/s
   retry_parameters:
     task_retry_limit: 2
