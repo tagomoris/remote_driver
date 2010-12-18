@@ -3,11 +3,18 @@
 from google.appengine.ext import db
 from google.appengine.api import taskqueue
 
+from google.appengine.api import datastore
+from google.appengine.api import memcache
+from google.appengine.api import urlfetch
+from google.appengine.api import users
+from google.appengine.ext import search
+
 from google.appengine.ext import webapp
 from google.appengine.ext.webapp.util import run_wsgi_app
 
 import datetime
 import pickle
+import base64
 
 class FlexRemoteApiJob(db.Model):
     created_at = db.DateTimeProperty(auto_now_add=True)
@@ -15,50 +22,54 @@ class FlexRemoteApiJob(db.Model):
     finished_at = db.DateTimeProperty()
     definitions = db.TextProperty()
     context = db.TextProperty()
-    entrypoint_function = db.StringProperty()
-    entrypoint_arguments = db.TextProperty()
+    eval_line = db.TextProperty()
     result = db.TextProperty()
     # start-stop-position, and so on...
 
 
 class FlexRemoteApiExecuteCallHandler(webapp.RequestHandler):
     def post(self):
-        job = FlexRemoteApiJob.get_by_id(int(self.request.get('id')))
-        if not job:
+        ___job = FlexRemoteApiJob.get_by_id(int(self.request.get('id')))
+        if not ___job:
             self.response.set_status(404)
             return
-        if job.started_at:
+        if ___job.started_at:
             self.response.set_status(304)
             return
-        exec definitions
-        ep_func = pickle.loads(job.entrypoint_function)
-        ep_args = pickle.loads(job.entrypoint_arguments)
-        # post.func_globals.update(pickle.loads(job.context))
-        # _global_context = pickle.loads(job.context)
-        ep_func.func_globals.update(pickle.loads(job.context))
+        exec(base64.b64decode(___job.definitions), globals())
+        # ep_func = pickle.loads(base64.b64decode(job.entrypoint_function))
+        # ep_args = pickle.loads(base64.b64decode(job.entrypoint_arguments))
+        # ep_keys = pickle.loads(base64.b64decode(job.entrypoint_keywords))
+        # ep_func.func_globals.update(pickle.loads(base64.b64decode(job.context)))
+        globals().update(pickle.loads(base64.b64decode(___job.context)))
 
-        job.started_at = datetime.datetime.now()
-        job.put()
+        ___job.started_at = datetime.datetime.now()
+        ___job.put()
 
-        job.result = pickle.dumps(ep_func(ep_args))
-        job.finished_at = datetime.datetime.now()
+        # job.result = base64.b64encode(pickle.dumps(ep_func(*ep_args, **ep_keys)))
+        ___result = eval(base64.b64decode(___job.eval_line), globals())
+        ___job.result = base64.b64encode(pickle.dumps(___result))
+        ___job.finished_at = datetime.datetime.now()
+        ___job.put()
         self.response.set_status(200)
 
 
 class FlexRemoteApiCreateCallHandler(webapp.RequestHandler):
     def post(self):
-        req = self.request
+        params = pickle.loads(self.request.body)
         job = FlexRemoteApiJob(
-            definitions = req.get('definitions'),
-            context = req.get('context'),
-            entrypoint_function = req.get('entrypoint_function'),
-            entrypoint_arguments = req.get('entrypoint_arguments'))
-        if not job.entrypoint_function:
-            self.response.set_status(406)
-            return
+            definitions = db.Text(params['definitions']),
+            context = db.Text(params['context']),
+            eval_line = db.Text(params['eval_line'])
+            # entrypoint_function = db.Text(params['entrypoint_function']),
+            # entrypoint_arguments = db.Text(params['entrypoint_arguments']),
+            # entrypoint_keywords = db.Text(params['entrypoint_keywords'])
+        )
+        # if not job.entrypoint_function:
+        #     self.response.set_status(406)
+        #     return
         job.put()
-        taskqueue.add(name='exec_flex_remote_api_job',
-                      url='/_ex_ah/flex_remote_api/execute',
+        taskqueue.add(url='/_ex_ah/flex_remote_api/execute',
                       params={'id':str(job.key().id())})
         self.response.out.write(str(job.key().id()))
 

@@ -66,8 +66,9 @@ import optparse
 # readline is needed
 import readline
 import re
-
-from google.appengine.ext.remote_api import remote_api_stub
+import codeop
+import pickle
+import base64
 
 from google.appengine.api import datastore
 from google.appengine.api import memcache
@@ -76,24 +77,121 @@ from google.appengine.api import users
 from google.appengine.ext import db
 from google.appengine.ext import search
 
+from google.appengine.ext.remote_api import remote_api_stub
+from google.appengine.tools import appengine_rpc
 
 HISTORY_PATH = os.path.expanduser('~/.remote_api_shell_history')
-DEFAULT_PATH = '/remote_api'
+DEFAULT_PATH = '/_ah/remote_api'
 BANNER = """App Engine remote_api shell with flex_remote_api_shell
 Python %s
 The db, users, urlfetch, and memcache modules are imported.""" % sys.version
 
 
+class FlexRemoteApiJob(db.Model):
+    created_at = db.DateTimeProperty(auto_now_add=True)
+    started_at = db.DateTimeProperty()
+    finished_at = db.DateTimeProperty()
+    definitions = db.TextProperty()
+    context = db.TextProperty()
+    eval_line = db.TextProperty()
+    result = db.TextProperty()
+
+
+__remote_api_auth_pair = ()
+
 def auth_func():
-    return (raw_input('Email: '), getpass.getpass('Password: '))
+    global __remote_api_auth_pair
+    __remote_api_auth_pair = (raw_input('Email: '), getpass.getpass('Password: '))
+    return __remote_api_auth_pair
+
+def cached_auth_func():
+    if __remote_api_auth_pair:
+        return __remote_api_auth_pair
+    return auth_func()
+
+
+def try_compile(lines):
+    try:
+        if codeop.compile_command("\n".join(lines) + "\n"):
+            return True
+        else:
+            return None
+    except (SyntaxError, OverflowError, ValueError):
+        return False
 
 
 __readline_history_session_start = 0
+
+def gather_definitions():
+    definition_lines = []
+    block = []
+    block_force_continuous = False
+    for index in range(__readline_history_session_start, readline.get_current_history_length()):
+        line = readline.get_history_item(index)
+        if len(block) > 0 and (block_force_continuous or line.startswith(' ')):
+            r = try_compile(block + [line])
+            if r is True:
+                block.append(line)
+                block_force_continuous = False
+                continue
+            elif r is None:
+                block.append(line)
+                block_force_continuous = True
+                continue
+        if len(block) > 0:
+            definition_lines += block
+            block,block_for_definition,block_force_continuous = [],False,False
+
+        if re.match('def |class |import |from ', line):
+            r = try_compile([line])
+            if r is True:
+                definition_lines.append(line)
+            elif r is None:
+                block.append(line)
+                block_force_continuous = True
+    if len(block) > 0:
+        definition_lines += block
+    return "\n".join(definition_lines) + "\n"
+
+
+def select_globals_to_send(context_dict):
+    DESELECT_KEYS = ['BANNER', 'CURRENT_DIR_PATH', 'DEFAULT_PATH', 'EXTRA_PATHS', 'HISTORY_PATH', 'SDK_PATH',
+                     '__builtins__', '__doc__', '__file__', '__name__',
+                     '__flex_remote_api_server', '__readline_history_session_start', '__remote_api_auth_pair', 'version_tuple',
+                     'main',
+                     'auth_func', 'cached_auth_func', 'try_compile', 'gather_definitions', 'select_globals_to_send',
+                     'run_in_remote', 'magic_input'
+                     ]
+    selected = {}
+    for k,v in context_dict.items():
+        if type(v).__name__ == 'module' or type(v).__name__ == 'classobj' or type(v).__name__ == 'type':
+            continue
+        if k in DESELECT_KEYS:
+            continue
+        selected[k] = v
+    return selected
+
 __flex_remote_api_server = None
 
-def xx(func, *args, **keywords):
-    return func(*args, **keywords)
+def run_in_remote(b64_eval_line):
+    params = {
+        'definitions': base64.b64encode(gather_definitions()),
+        'context': base64.b64encode(pickle.dumps(select_globals_to_send(globals()))),
+        'eval_line': b64_eval_line
+    }
+    payload = pickle.dumps(params)
+    response = __flex_remote_api_server.Send(request_path='/_ex_ah/flex_remote_api/create', payload=payload)
+    job_id = int(response)
+    running = True
+    while running:
+        if FlexRemoteApiJob.get_by_id(job_id).finished_at:
+            running = False
+    job = FlexRemoteApiJob.get_by_id(job_id)
+    delta = job.finished_at - job.started_at
+    print "%f sec" % (delta.seconds * 1.0 + delta.microseconds / 1000000.0)
+    return pickle.loads(base64.b64decode(job.result))
 
+# /_ex_ah/flex_remote_api/create, status
 
 def magic_input(prompt=''):
     line = raw_input(prompt)
@@ -103,7 +201,7 @@ def magic_input(prompt=''):
     match_result = re.compile('([a-zA-Z0-9_]+)\((.*)\)$').match(bareline)
     if not match_result:
         return bareline
-    return 'xx(' + match_result.group(1) + ', ' + match_result.group(2) + ')'
+    return "run_in_remote('" + base64.b64encode(match_result.group(1) + '(' + match_result.group(2) + ')') + "')"
 
 
 def main(argv):
@@ -137,14 +235,29 @@ def main(argv):
                                        save_cookies=True, secure=options.secure)
     remote_api_stub.MaybeInvokeAuthentication()
 
-    os.environ['SERVER_SOFTWARE'] = 'Development (flex_remote_api_shell)/1.0'
+    servername = options.server
+    if not servername:
+        servername = '%s.appspot.com' % (appid,)
+    rpc_server = appengine_rpc.HttpRpcServer(servername,
+                                             cached_auth_func,
+                                             remote_api_stub.GetUserAgent() + ' flex_remote_api_shell/0.0',
+                                             remote_api_stub.GetSourceName(),
+                                             save_cookies=True,
+                                             debug_data=False,
+                                             secure=options.secure)
+    global __flex_remote_api_server
+    __flex_remote_api_server = rpc_server
+
+    os.environ['SERVER_SOFTWARE'] = 'Development (flex_remote_api_shell)/0.0'
 
     sys.ps1 = '%s/xx> ' % appid #TODO rewrite from xx to 'flex'
     readline.parse_and_bind('tab: complete')
     atexit.register(lambda: readline.write_history_file(HISTORY_PATH))
     if os.path.exists(HISTORY_PATH):
         readline.read_history_file(HISTORY_PATH)
-        #TODO check get_current_history_length() and set start-point of loading
+        readline.add_history('')
+        global __readline_history_session_start
+        __readline_history_session_start = readline.get_current_history_length()
 
     code.interact(banner=BANNER, readfunc=magic_input, local=globals())
 
