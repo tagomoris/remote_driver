@@ -18,7 +18,7 @@
 """An interactive python shell that uses remote_api, with flex_remote_api calls.
 
 Usage:
-  flex_remote_api_shell.py [-s HOSTNAME] APPENGINE_SDK_PATH APPID [PATH]
+  flex_remote_api_shell.py APPENGINE_SDK_PATH APPID [PATH]
 """
 
 import os
@@ -37,6 +37,10 @@ if version_tuple == (2, 4):
     sys.stderr.write('Warning: Python 2.4 is not supported; this program may '
                      'break. Please use version 2.5 or greater.\n')
 
+if len(sys.argv) < 3:
+    print __doc__
+    sys.exit(0)
+    
 SDK_PATH = os.path.abspath(os.path.realpath(sys.argv[1]))
 if sys.argv[1] is None or not os.path.join(SDK_PATH, 'google'):
     sys.stderr.write("Error: Invalid Google AppEngine SDK path: '%s'\n" % sys.argv[1])
@@ -69,6 +73,7 @@ import re
 import codeop
 import pickle
 import base64
+import time
 
 from google.appengine.api import datastore
 from google.appengine.api import memcache
@@ -184,6 +189,7 @@ def run_in_remote(b64_eval_line):
     job_id = int(response)
     running = True
     while running:
+        time.sleep(0.5)
         if FlexRemoteApiJob.get_by_id(job_id).finished_at:
             running = False
     job = FlexRemoteApiJob.get_by_id(job_id)
