@@ -37,10 +37,6 @@ class FlexRemoteApiExecuteCallHandler(webapp.RequestHandler):
             self.response.set_status(304)
             return
         exec(base64.b64decode(___job.definitions), globals())
-        # ep_func = pickle.loads(base64.b64decode(job.entrypoint_function))
-        # ep_args = pickle.loads(base64.b64decode(job.entrypoint_arguments))
-        # ep_keys = pickle.loads(base64.b64decode(job.entrypoint_keywords))
-        # ep_func.func_globals.update(pickle.loads(base64.b64decode(job.context)))
         globals().update(pickle.loads(base64.b64decode(___job.context)))
 
         ___job.started_at = datetime.datetime.now()
@@ -87,8 +83,6 @@ class FlexRemoteApiStatusCallHandler(webapp.RequestHandler):
         
 
 application = webapp.WSGIApplication([
-    ('/_ex_ah/flex_remote_api/create', FlexRemoteApiCreateCallHandler),
-    ('/_ex_ah/flex_remote_api/status', FlexRemoteApiStatusCallHandler),
     ('/_ex_ah/flex_remote_api/execute', FlexRemoteApiExecuteCallHandler),
     ],
     debug=True)

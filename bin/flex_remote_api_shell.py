@@ -79,6 +79,7 @@ from google.appengine.api import datastore
 from google.appengine.api import memcache
 from google.appengine.api import urlfetch
 from google.appengine.api import users
+from google.appengine.api import taskqueue
 from google.appengine.ext import db
 from google.appengine.ext import search
 
@@ -179,14 +180,15 @@ def select_globals_to_send(context_dict):
 __flex_remote_api_server = None
 
 def run_in_remote(b64_eval_line):
-    params = {
-        'definitions': base64.b64encode(gather_definitions()),
-        'context': base64.b64encode(pickle.dumps(select_globals_to_send(globals()))),
-        'eval_line': b64_eval_line
-    }
-    payload = pickle.dumps(params)
-    response = __flex_remote_api_server.Send(request_path='/_ex_ah/flex_remote_api/create', payload=payload)
-    job_id = int(response)
+    job = FlexRemoteApiJob(
+        definitions = base64.b64encode(gather_definitions()),
+        context = base64.b64encode(pickle.dumps(select_globals_to_send(globals()))),
+        eval_line = b64_eval_line,
+    )
+    job.put()
+    job_id = job.key().id()
+    taskqueue.add(url='/_ex_ah/flex_remote_api/execute',
+                  params={'id':str(job_id)})
     running = True
     while running:
         time.sleep(0.5)
@@ -197,7 +199,6 @@ def run_in_remote(b64_eval_line):
     print "%f sec" % (delta.seconds * 1.0 + delta.microseconds / 1000000.0)
     return pickle.loads(base64.b64decode(job.result))
 
-# /_ex_ah/flex_remote_api/create, status
 
 def magic_input(prompt=''):
     line = raw_input(prompt)
