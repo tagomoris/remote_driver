@@ -103,11 +103,18 @@ And you can use variables defined on local shell in function runned in 'remote'.
     u'0123456789 2010-12-26 06:19:10.501312'
     yourapplication/flex> 
 
-### Warnings
-
+## Warnings
 Now, you must take care limitations below.
 
-1. Re-assigned functions/classes are out of accessable members in 'remote' procedure.
+### Importing modules
+Importing any modules of AppEngine SDK is allowed. But you can import your own modules that has same package name between local and appspot.
+
+    from google.appengine.api import taskqueue  # OK, you can use taskqueue module in 'remote'.
+    
+    import your_data_models # Only when your_data_models.py is deployed in appspot, you can use it in 'remote'.
+
+### Re-assigned functions/classes
+Re-assigned functions/classes are out of accessable members in 'remote' procedure.
 
     yourapplication/flex> def hoge_func1(num):
     ...   return num * 10
@@ -122,9 +129,11 @@ Now, you must take care limitations below.
     100
     yourapplication/flex> remote hoge_func2(10) # Doesn't work this code !!!
 
-2. On error in 'remote' procedure, shell blocks and never returns. You must check AppEngine Dashboard (taskqueue), and push ctrl-C ....
+### Error checks
+On error in 'remote' procedure, shell blocks and never returns. You must check AppEngine Dashboard (taskqueue), and push ctrl-C ....
 
-3. You should take care about Datastore access Quota per min. Tasks to put entities over 1000 will fail with logs below.
+### API call quota
+You should take care about Datastore(and other api) calls quota per min. Tasks to put entities over 1000 will fail with logs below.
 
     12-19 12:31AM 38.262 /_ex_ah/flex_remote_api/execute 500 31376ms 41440cpu_ms 33646api_cpu_ms 1kb AppEngine-Google; (+http://code.google.com/appengine)
     E 12-19 12:32AM 09.599 The API call datastore_v3.Put() required more quota than is available. Traceback (most recent call last): File "/base/python_runtime/python_lib/vers
