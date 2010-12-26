@@ -105,18 +105,18 @@ class FlexRemoteApiJob(db.Model):
 
 __remote_api_auth_pair = ()
 
-def auth_func():
+def __auth_func():
     global __remote_api_auth_pair
     __remote_api_auth_pair = (raw_input('Email: '), getpass.getpass('Password: '))
     return __remote_api_auth_pair
 
-def cached_auth_func():
+def __cached_auth_func():
     if __remote_api_auth_pair:
         return __remote_api_auth_pair
-    return auth_func()
+    return __auth_func()
 
 
-def try_compile(lines):
+def __try_compile(lines):
     try:
         if codeop.compile_command("\n".join(lines) + "\n"):
             return True
@@ -128,14 +128,14 @@ def try_compile(lines):
 
 __readline_history_session_start = 0
 
-def gather_definitions():
+def __gather_definitions():
     definition_lines = []
     block = []
     block_force_continuous = False
     for index in range(__readline_history_session_start, readline.get_current_history_length()):
         line = readline.get_history_item(index)
         if len(block) > 0 and (block_force_continuous or line.startswith(' ')):
-            r = try_compile(block + [line])
+            r = __try_compile(block + [line])
             if r is True:
                 block.append(line)
                 block_force_continuous = False
@@ -149,7 +149,7 @@ def gather_definitions():
             block,block_for_definition,block_force_continuous = [],False,False
 
         if re.match('def |class |import |from ', line):
-            r = try_compile([line])
+            r = __try_compile([line])
             if r is True:
                 definition_lines.append(line)
             elif r is None:
@@ -160,13 +160,13 @@ def gather_definitions():
     return "\n".join(definition_lines) + "\n"
 
 
-def select_globals_to_send(context_dict):
+def __select_globals_to_send(context_dict):
     DESELECT_KEYS = ['BANNER', 'CURRENT_DIR_PATH', 'DEFAULT_PATH', 'EXTRA_PATHS', 'HISTORY_PATH', 'SDK_PATH',
                      '__builtins__', '__doc__', '__file__', '__name__',
                      '__flex_remote_api_server', '__readline_history_session_start', '__remote_api_auth_pair', 'version_tuple',
                      'main',
-                     'auth_func', 'cached_auth_func', 'try_compile', 'gather_definitions', 'select_globals_to_send',
-                     'run_in_remote', 'magic_input'
+                     '__auth_func', '__cached_auth_func', '__try_compile', '__gather_definitions', '__select_globals_to_send',
+                     '__run_in_remote', '__magic_input'
                      ]
     selected = {}
     for k,v in context_dict.items():
@@ -179,15 +179,16 @@ def select_globals_to_send(context_dict):
 
 __flex_remote_api_server = None
 
-def run_in_remote(b64_eval_line):
+def __run_in_remote(b64_eval_line):
     job = FlexRemoteApiJob(
-        definitions = base64.b64encode(gather_definitions()),
-        context = base64.b64encode(pickle.dumps(select_globals_to_send(globals()))),
+        definitions = base64.b64encode(__gather_definitions()),
+        context = base64.b64encode(pickle.dumps(__select_globals_to_send(globals()))),
         eval_line = b64_eval_line,
     )
     job.put()
     job_id = job.key().id()
-    taskqueue.add(url='/_ex_ah/flex_remote_api/execute',
+    taskqueue.add(queue_name='FlexRemoteApiJob',
+                  url='/_ex_ah/flex_remote_api/execute',
                   params={'id':str(job_id)})
     running = True
     while running:
@@ -200,15 +201,15 @@ def run_in_remote(b64_eval_line):
     return pickle.loads(base64.b64decode(job.result))
 
 
-def magic_input(prompt=''):
+def __magic_input(prompt=''):
     line = raw_input(prompt)
-    if not line.strip().startswith('xx '):
+    if not line.strip().startswith('remote '):
         return line
-    bareline = line.strip()[len('xx '):]
+    bareline = line.strip()[len('remote '):]
     match_result = re.compile('([a-zA-Z0-9_]+)\((.*)\)$').match(bareline)
     if not match_result:
         return bareline
-    return "run_in_remote('" + base64.b64encode(match_result.group(1) + '(' + match_result.group(2) + ')') + "')"
+    return "__run_in_remote('" + base64.b64encode(match_result.group(1) + '(' + match_result.group(2) + ')') + "')"
 
 
 def main(argv):
@@ -237,7 +238,7 @@ def main(argv):
     else:
         path = DEFAULT_PATH
 
-    remote_api_stub.ConfigureRemoteApi(appid, path, auth_func,
+    remote_api_stub.ConfigureRemoteApi(appid, path, __auth_func,
                                        servername=options.server,
                                        save_cookies=True, secure=options.secure)
     remote_api_stub.MaybeInvokeAuthentication()
@@ -246,7 +247,7 @@ def main(argv):
     if not servername:
         servername = '%s.appspot.com' % (appid,)
     rpc_server = appengine_rpc.HttpRpcServer(servername,
-                                             cached_auth_func,
+                                             __cached_auth_func,
                                              remote_api_stub.GetUserAgent() + ' flex_remote_api_shell/0.0',
                                              remote_api_stub.GetSourceName(),
                                              save_cookies=True,
@@ -257,7 +258,7 @@ def main(argv):
 
     os.environ['SERVER_SOFTWARE'] = 'Development (flex_remote_api_shell)/0.0'
 
-    sys.ps1 = '%s/xx> ' % appid #TODO rewrite from xx to 'flex'
+    sys.ps1 = '%s/flex> ' % appid
     readline.parse_and_bind('tab: complete')
     atexit.register(lambda: readline.write_history_file(HISTORY_PATH))
     if os.path.exists(HISTORY_PATH):
@@ -266,7 +267,7 @@ def main(argv):
         global __readline_history_session_start
         __readline_history_session_start = readline.get_current_history_length()
 
-    code.interact(banner=BANNER, readfunc=magic_input, local=globals())
+    code.interact(banner=BANNER, readfunc=__magic_input, local=globals())
 
 
 if __name__ == '__main__':

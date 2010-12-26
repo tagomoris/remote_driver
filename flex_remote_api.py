@@ -42,44 +42,11 @@ class FlexRemoteApiExecuteCallHandler(webapp.RequestHandler):
         ___job.started_at = datetime.datetime.now()
         ___job.put()
 
-        # job.result = base64.b64encode(pickle.dumps(ep_func(*ep_args, **ep_keys)))
         ___result = eval(base64.b64decode(___job.eval_line), globals())
         ___job.result = base64.b64encode(pickle.dumps(___result))
         ___job.finished_at = datetime.datetime.now()
         ___job.put()
         self.response.set_status(200)
-
-
-class FlexRemoteApiCreateCallHandler(webapp.RequestHandler):
-    def post(self):
-        params = pickle.loads(self.request.body)
-        job = FlexRemoteApiJob(
-            definitions = db.Text(params['definitions']),
-            context = db.Text(params['context']),
-            eval_line = db.Text(params['eval_line'])
-            # entrypoint_function = db.Text(params['entrypoint_function']),
-            # entrypoint_arguments = db.Text(params['entrypoint_arguments']),
-            # entrypoint_keywords = db.Text(params['entrypoint_keywords'])
-        )
-        # if not job.entrypoint_function:
-        #     self.response.set_status(406)
-        #     return
-        job.put()
-        taskqueue.add(url='/_ex_ah/flex_remote_api/execute',
-                      params={'id':str(job.key().id())})
-        self.response.out.write(str(job.key().id()))
-
-
-class FlexRemoteApiStatusCallHandler(webapp.RequestHandler):
-    def get(self):
-        job = FlexRemoteApiJob.get_by_id(self.request.get('id'))
-        if not job:
-            self.response.set_status(404)
-        elif not job.finished_at:
-            self.response.set_status(304)
-        else:
-            self.response.set_status(200)
-            self.response.out.write(job.result)
         
 
 application = webapp.WSGIApplication([
