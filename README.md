@@ -106,6 +106,9 @@ And you can use variables defined on local shell in function runned in 'remote'.
 ## Warnings
 Now, you must take care limitations below.
 
+### Requirements
+'readline' module required. Then, on Windows environment, you cannot use flex_remote_api_shell....
+
 ### Importing modules
 Importing any modules of AppEngine SDK is allowed. But you can import your own modules that has same package name between local and appspot.
 
