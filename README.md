@@ -2,6 +2,8 @@
 
 * http://github.com/tagomoris/flex_remote_api
 
+This library works with Google App Engine SDK Python 1.4.0.
+
 ## DESCRIPTION
 
 'flex_remote_api' is extension library works as remote_api_shell of Google App Engine. On flex_remote_api_shell's shell, specified function runs on appspot directly, and you can get result in more-more shorter time than remote_api_shell.
@@ -31,8 +33,101 @@ Deploy your application
 
     appcfg.py update YOUR_APPLICATION
 
-### Demonstration
+### Run
+run bin/flex_remote_api_shell.py with path of AppEngine SDK, and your application id.
 
+    $ bin/flex_remote_api_shell.py ~/google_appengine youraplication
+    Email: youraccount@gmail.com
+    Password: [PASSWORD]
+    App Engine remote_api shell with flex_remote_api_shell
+    Python 2.5.4 (r254:67916, Jun 24 2010, 21:47:25) 
+    [GCC 4.2.1 (Apple Inc. build 5646)]
+    The db, users, urlfetch, and memcache modules are imported.
+    yourapplication/flex> 
+
+## Demonstrations
+### Creating data
+You can use flex_remote_api_shell same as remote_api_shell.
+
+    yourapplication/flex> class TestData(db.Model):
+    ...   name = db.StringProperty()
+    ...   valid = db.BooleanProperty()
+    ...   content = db.TextProperty()
+    ... 
+    yourapplication/flex> entity1 = TestData(name="tagomoris",valid=True,content="text, you want...")
+    yourapplication/flex> entity1.put()
+    datastore_types.Key.from_path(u'TestData', 2101227038L, _app=u'yourapplication')
+    yourapplication/flex> 
+
+You write codes above, shell puts 'entity1' to Datastore Service on appspot, with remote_api.
+
+You can also use functions for data creation with remote_api.
+
+    yourapplication/flex> def create_testdata(num):
+    ...   for i in range(0,num):
+    ...     TestData(name="tagomoris"+str(num), valid=True, content="hoge hogehoge hogehoge ....").put()
+    ... 
+    yourapplication/flex> create_testdata(10)
+    yourapplication/flex> 
+
+But datastore accesses over remote_api is very slow, and then, you can use 'remote' builtin directive of flex_remote_api.
+
+    yourapplication/flex> print datetime.datetime.now(); create_testdata(500); print datetime.datetime.now()
+    2010-12-26 06:01:58.362485
+    2010-12-26 06:04:59.821365
+    yourapplication/flex> remote create_testdata(500)
+    6.798458 sec
+    yourapplication/flex> 
+
+First 'create_testdata(500)' runs on local python interpriter, and putted over remote_api, and second 'remote create_testdata(500)' runs on appspot environment.
+
+You can use 'remote' directive without care for class-definitions and function-definitions. These definitions are restored on appspot environment in 'remote' procedure. (But re-assigned functions/classes doesn't works now...)
+
+And you can use variables defined on local shell in function runned in 'remote'. See below.
+
+    yourapplication/flex> content_string = "0123456789 " + str(datetime.datetime.now())
+    yourapplication/flex> content_string
+    u'0123456789 2010-12-26 06:19:10.501312'
+    yourapplication/flex> def create2_testdata(num):
+    ...   for i in range(0,num):
+    ...     TestData(name="moris"+str(i), valid=True, content=content_string).put()
+    ... 
+    yourapplication/flex> remote create2_testdata(100)
+    1.496799 sec
+    yourapplication/flex> ary = TestData.all().filter("name =", "moris5").fetch(10)
+    yourapplication/flex> len(ary)
+    1
+    yourapplication/flex> ary[0].name
+    u'moris5'
+    yourapplication/flex> ary[0].content
+    u'0123456789 2010-12-26 06:19:10.501312'
+    yourapplication/flex> 
+
+### Warnings
+
+Now, you must take care limitations below.
+
+1. Re-assigned functions/classes are out of accessable members in 'remote' procedure.
+
+    yourapplication/flex> def hoge_func1(num):
+    ...   return num * 10
+    ... 
+    yourapplication/flex> hoge_func2 = hoge_func1
+    yourapplication/flex> hoge_func1(10)
+    100
+    yourapplication/flex> hoge_func2(10)
+    100
+    yourapplication/flex> remote hoge_func1(10)
+    0.013490 sec
+    100
+    yourapplication/flex> remote hoge_func2(10) # Doesn't work this code !!!
+
+2. On error in 'remote' procedure, shell blocks and never returns. You must check AppEngine Dashboard (taskqueue), and push ctrl-C ....
+
+3. You should take care about Datastore access Quota per min. Tasks to put entities over 1000 will fail with logs below.
+
+    12-19 12:31AM 38.262 /_ex_ah/flex_remote_api/execute 500 31376ms 41440cpu_ms 33646api_cpu_ms 1kb AppEngine-Google; (+http://code.google.com/appengine)
+    E 12-19 12:32AM 09.599 The API call datastore_v3.Put() required more quota than is available. Traceback (most recent call last): File "/base/python_runtime/python_lib/vers
 
 * * * * *
 
