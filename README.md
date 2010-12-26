@@ -15,20 +15,15 @@
 To use flex_remote_api, you must do setup settings below.
 
 * Add flex_remote_api handler to your application
-
     cp flex_remote_api.py YOUR_APPLICATION_DIRECTORY
-
 * Edit app.yaml to enable remote_api, and flex_remote_api handler
-
     builtins:
     - remote_api: on
     
     handlers:
     - url: /_ex_ah/flex_remote_api/.*
       script: flex_remote_api.py
-
 * Deploy your application
-
     appcfg.py update YOUR_APPLICATION
 
 ### Demonstration
