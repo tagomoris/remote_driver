@@ -103,11 +103,14 @@ And you can use variables defined on local shell in function runned in 'remote'.
     u'0123456789 2010-12-26 06:19:10.501312'
     yourapplication/flex> 
 
-## Warnings
+## Cautions and Limitations
 Now, you must take care limitations below.
 
 ### Requirements
 'readline' module required. Then, on Windows environment, you cannot use flex_remote_api_shell....
+
+### 'remote' directive limitation
+'remote' directive accepts only one formula (not statement). If you want to run loops and condition controls, you must wrap codes as function.
 
 ### Importing modules
 Importing any modules of AppEngine SDK is allowed. But you can import your own modules that has same package name between local and appspot.
