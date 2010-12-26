@@ -8,7 +8,7 @@
 
 ## SYNOPSIS
 
-   bin/flex_remote_api_shell.py APPENGINE_SDK_DIR_PATH APP_ID
+    bin/flex_remote_api_shell.py APPENGINE_SDK_DIR_PATH APP_ID
 
 ## Overview
 ### Setup
@@ -16,20 +16,20 @@ To use flex_remote_api, you must do setup settings below.
 
 * Add flex_remote_api handler to your application
 
-   cp flex_remote_api.py YOUR_APPLICATION_DIRECTORY
+    cp flex_remote_api.py YOUR_APPLICATION_DIRECTORY
 
 * Edit app.yaml to enable remote_api, and flex_remote_api handler
 
-   builtins:
-   - remote_api: on
-   
-   handlers:
-   - url: /_ex_ah/flex_remote_api/.*
-     script: flex_remote_api.py
+    builtins:
+    - remote_api: on
+    
+    handlers:
+    - url: /_ex_ah/flex_remote_api/.*
+      script: flex_remote_api.py
 
 * Deploy your application
 
-   appcfg.py update YOUR_APPLICATION
+    appcfg.py update YOUR_APPLICATION
 
 ### Demonstration
 
