@@ -167,7 +167,7 @@ def __select_globals_to_send(context_dict):
                      '__flex_remote_api_server', '__readline_history_session_start', '__remote_api_auth_pair', '__running_job_id_list',
                      'version_tuple',
                      'main',
-                     'remote_sync', 'remote_async', 'remote_async_wait',
+                     'remote_sync', 'remote_async_results',
                      '__auth_func', '__cached_auth_func', '__try_compile', '__gather_definitions', '__select_globals_to_send',
                      '__run_in_remote', '__run_in_remote_sync', '__run_in_remote_async',
                      '__wait_remote_jobs', '__wait_async_remote_jobs',
@@ -189,7 +189,7 @@ def __run_in_remote(b64_eval_line):
         definitions = base64.b64encode(__gather_definitions()),
         context = base64.b64encode(pickle.dumps(__select_globals_to_send(globals()))),
         eval_line = b64_eval_line,
-        retries = 0,
+        retries = 0
     )
     job.put()
     job_id = job.key().id()
@@ -201,6 +201,7 @@ def __run_in_remote(b64_eval_line):
 
 def __wait_remote_jobs(waiting_jobs):
     running = True
+    # TODO: watch of failure
     while running:
         time.sleep(0.5)
         jobs = FlexRemoteApiJob.get_by_id(waiting_jobs)
@@ -209,7 +210,7 @@ def __wait_remote_jobs(waiting_jobs):
     results = []
     for job in FlexRemoteApiJob.get_by_id(waiting_jobs):
         delta = job.finished_at - job.started_at
-        print "job id: %d in %f sec" % [job.key().id(), (delta.seconds * 1.0 + delta.microseconds / 1000000.0)]
+        print "job id: %d in %f sec" % (job.key().id(), (delta.seconds * 1.0 + delta.microseconds / 1000000.0))
         results.append(pickle.loads(base64.b64decode(job.result)))
     return results
 
@@ -228,9 +229,7 @@ def __run_in_remote_async(b64_eval_line):
     job = __run_in_remote(b64_eval_line)
     global __running_job_id_list
     __running_job_id_list.append(job.key().id())
-    print "job id: %d" % job.key().id()
-
-remote_async = __run_in_remote_async
+    print "job id: %d" % int(job.key().id())
 
 
 def __wait_async_remote_jobs():
@@ -239,27 +238,43 @@ def __wait_async_remote_jobs():
     __running_job_id_list = []
     return results
 
-remote_async_wait = __wait_async_remote_jobs
+remote_async_results = __wait_async_remote_jobs
 
 
 def __magic_input(prompt=''):
     line = raw_input(prompt)
     if line == 'remote_async_wait':
         return '__wait_async_remote_jobs()'
-
-    if not reduce(lambda x,y: x or line.startswith(y + ' '), ['remote', 'remote_sync', 'remote_async'], False):
+    elif reduce(lambda x,y: x or line.startswith(y + ' '), ['remote', 'remote_sync', 'remote_async'], False):
+        space_position = line.index(' ')
+        directive = line[:space_position]
+        bareline = line[space_position+1:]
+        if directive == 'remote' or directive == 'remote_sync':
+            return "__run_in_remote_sync('" + base64.b64encode(bareline) + "')"
+        if directive == 'remote_async':
+            return "__run_in_remote_async('" + base64.b64encode(bareline) + "')"
+    elif line.find('remote_async_results()') >= 0:
         return line
-    space_position = line.index(' ')
-    directive = line[:space_position]
-    bareline = line[space_position+1:]
-    match_result = re.compile('[a-zA-Z0-9_]+\(.*\)$').match(bareline)
-    if not match_result:
-        return bareline
-    if directive == 'remote' or directive == 'remote_sync':
-        return "__run_in_remote_sync('" + base64.b64encode(match_result.group(0)) + "')"
-    if directive == 'remote_async':
-        return "__run_in_remote_async('" + base64.b64encode(match_result.group(0)) + "')"
-    raise RuntimeError, "unimplemented directive: %s" % directive
+    elif line.find('remote_sync(') >= 0:
+        front_position = line.find('remote_sync(')
+        start_index = front_position + len('remote_sync(')
+        end_index = -1
+        parenthesis_count = 0
+        for i in range(start_index,len(line)):
+            char = line[i]
+            if char == '(':
+                parenthesis_count += 1
+            elif char == ')':
+                if parenthesis_count == 0:
+                    end_index = i
+                    break
+                else:
+                    parenthesis_count -= 1
+        if end_index > -1:
+            eval_b64_line = base64.b64encode(line[start_index:end_index])
+            return line[:front_position] + "__run_in_remote_sync('" + eval_b64_line + "')" + line[end_index+1:]
+
+    return line
 
 
 def main(argv):
