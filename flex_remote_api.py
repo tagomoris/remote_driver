@@ -24,7 +24,7 @@ class FlexRemoteApiJob(db.Model):
     context = db.TextProperty()
     eval_line = db.TextProperty()
     result = db.TextProperty()
-    retries = db.IntergerProperty()
+    retries = db.IntegerProperty()
     # start-stop-position, and so on...
 
 

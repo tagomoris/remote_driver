@@ -101,7 +101,7 @@ class FlexRemoteApiJob(db.Model):
     context = db.TextProperty()
     eval_line = db.TextProperty()
     result = db.TextProperty()
-    retries = db.IntergerProperty()
+    retries = db.IntegerProperty()
 
 
 __remote_api_auth_pair = ()
