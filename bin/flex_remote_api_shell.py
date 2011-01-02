@@ -123,7 +123,17 @@ def __try_compile(lines):
             return True
         else:
             return None
-    except (SyntaxError, OverflowError, ValueError):
+    except StandardError:
+        return False
+
+
+def __check_executable_definition(lines):
+    env = globals().copy()
+    definitions = "\n".join(lines) + "\n"
+    try:
+        exec definitions in env
+        return True
+    except StandardError:
         return False
 
 
@@ -145,19 +155,27 @@ def __gather_definitions():
                 block.append(line)
                 block_force_continuous = True
                 continue
+            elif r is False:
+                block = []
+                block_force_continuous = False
+                continue
+
         if len(block) > 0:
-            definition_lines += block
+            if __check_executable_definition(block):
+                definition_lines += block
             block,block_for_definition,block_force_continuous = [],False,False
 
         if re.match('def |class |import |from ', line):
             r = __try_compile([line])
             if r is True:
-                definition_lines.append(line)
+                if __check_executable_definition([line]):
+                    definition_lines.append(line)
             elif r is None:
                 block.append(line)
                 block_force_continuous = True
     if len(block) > 0:
-        definition_lines += block
+        if __check_executable_definition(block):
+            definition_lines += block
     return "\n".join(definition_lines) + "\n"
 
 
@@ -169,7 +187,7 @@ def __select_globals_to_send(context_dict):
                      'main',
                      'remote_sync', 'remote_async_results', 'remote_job_results',
                      '__auth_func', '__cached_auth_func', '__try_compile', '__gather_definitions', '__select_globals_to_send',
-                     '__break_parenthesis',
+                     '__break_parenthesis', '__check_executable_definition',
                      '__run_in_remote', '__run_in_remote_sync', '__run_in_remote_async',
                      '__wait_remote_jobs', '__wait_async_remote_jobs',
                      '__magic_input'
