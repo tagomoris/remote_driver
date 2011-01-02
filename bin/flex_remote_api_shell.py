@@ -101,6 +101,7 @@ class FlexRemoteApiJob(db.Model):
     context = db.TextProperty()
     eval_line = db.TextProperty()
     result = db.TextProperty()
+    retries = db.IntergerProperty()
 
 
 __remote_api_auth_pair = ()
@@ -163,10 +164,14 @@ def __gather_definitions():
 def __select_globals_to_send(context_dict):
     DESELECT_KEYS = ['BANNER', 'CURRENT_DIR_PATH', 'DEFAULT_PATH', 'EXTRA_PATHS', 'HISTORY_PATH', 'SDK_PATH',
                      '__builtins__', '__doc__', '__file__', '__name__',
-                     '__flex_remote_api_server', '__readline_history_session_start', '__remote_api_auth_pair', 'version_tuple',
+                     '__flex_remote_api_server', '__readline_history_session_start', '__remote_api_auth_pair', '__running_job_id_list',
+                     'version_tuple',
                      'main',
+                     'remote_sync', 'remote_async', 'remote_async_wait',
                      '__auth_func', '__cached_auth_func', '__try_compile', '__gather_definitions', '__select_globals_to_send',
-                     '__run_in_remote', '__magic_input'
+                     '__run_in_remote', '__run_in_remote_sync', '__run_in_remote_async',
+                     '__wait_remote_jobs', '__wait_async_remote_jobs',
+                     '__magic_input'
                      ]
     selected = {}
     for k,v in context_dict.items():
@@ -184,32 +189,77 @@ def __run_in_remote(b64_eval_line):
         definitions = base64.b64encode(__gather_definitions()),
         context = base64.b64encode(pickle.dumps(__select_globals_to_send(globals()))),
         eval_line = b64_eval_line,
+        retries = 0,
     )
     job.put()
     job_id = job.key().id()
     taskqueue.add(queue_name='FlexRemoteApiJob',
                   url='/_ex_ah/flex_remote_api/execute',
                   params={'id':str(job_id)})
+    return job
+
+
+def __wait_remote_jobs(waiting_jobs):
     running = True
     while running:
         time.sleep(0.5)
-        if FlexRemoteApiJob.get_by_id(job_id).finished_at:
+        jobs = FlexRemoteApiJob.get_by_id(waiting_jobs)
+        if reduce(lambda x,y: x and y.finished_at, jobs, True):
             running = False
-    job = FlexRemoteApiJob.get_by_id(job_id)
-    delta = job.finished_at - job.started_at
-    print "%f sec" % (delta.seconds * 1.0 + delta.microseconds / 1000000.0)
-    return pickle.loads(base64.b64decode(job.result))
+    results = []
+    for job in FlexRemoteApiJob.get_by_id(waiting_jobs):
+        delta = job.finished_at - job.started_at
+        print "job id: %d in %f sec" % [job.key().id(), (delta.seconds * 1.0 + delta.microseconds / 1000000.0)]
+        results.append(pickle.loads(base64.b64decode(job.result)))
+    return results
+
+
+def __run_in_remote_sync(b64_eval_line):
+    job = __run_in_remote(b64_eval_line)
+    job_id = job.key().id()
+    return __wait_remote_jobs([job_id])[0]
+
+remote_sync = __run_in_remote_sync
+
+
+__running_job_id_list = []
+
+def __run_in_remote_async(b64_eval_line):
+    job = __run_in_remote(b64_eval_line)
+    global __running_job_id_list
+    __running_job_id_list.append(job.key().id())
+    print "job id: %d" % job.key().id()
+
+remote_async = __run_in_remote_async
+
+
+def __wait_async_remote_jobs():
+    global __running_job_id_list
+    results = __wait_remote_jobs(__running_job_id_list)
+    __running_job_id_list = []
+    return results
+
+remote_async_wait = __wait_async_remote_jobs
 
 
 def __magic_input(prompt=''):
     line = raw_input(prompt)
-    if not line.strip().startswith('remote '):
+    if line == 'remote_async_wait':
+        return '__wait_async_remote_jobs()'
+
+    if not reduce(lambda x,y: x or line.startswith(y + ' '), ['remote', 'remote_sync', 'remote_async'], False):
         return line
-    bareline = line.strip()[len('remote '):]
-    match_result = re.compile('([a-zA-Z0-9_]+)\((.*)\)$').match(bareline)
+    space_position = line.index(' ')
+    directive = line[:space_position]
+    bareline = line[space_position+1:]
+    match_result = re.compile('[a-zA-Z0-9_]+\(.*\)$').match(bareline)
     if not match_result:
         return bareline
-    return "__run_in_remote('" + base64.b64encode(match_result.group(1) + '(' + match_result.group(2) + ')') + "')"
+    if directive == 'remote' or directive == 'remote_sync':
+        return "__run_in_remote_sync('" + base64.b64encode(match_result.group(0)) + "')"
+    if directive == 'remote_async':
+        return "__run_in_remote_async('" + base64.b64encode(match_result.group(0)) + "')"
+    raise RuntimeError, "unimplemented directive: %s" % directive
 
 
 def main(argv):

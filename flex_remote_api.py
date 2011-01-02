@@ -24,6 +24,7 @@ class FlexRemoteApiJob(db.Model):
     context = db.TextProperty()
     eval_line = db.TextProperty()
     result = db.TextProperty()
+    retries = db.IntergerProperty()
     # start-stop-position, and so on...
 
 
@@ -34,8 +35,17 @@ class FlexRemoteApiExecuteCallHandler(webapp.RequestHandler):
             self.response.set_status(404)
             return
         if ___job.started_at:
-            self.response.set_status(304)
+            if ___job.retries > 0:
+                self.response.set_status(403)
+            elif self.request.headers['X-AppEngine-TaskRetryCount'] \
+                   and int(self.request.headers['X-AppEngine-TaskRetryCount']) > 0:
+                ___job.retries = int(self.request.headers['X-AppEngine-TaskRetryCount'])
+                ___job.put()
+                self.response.set_status(403)
+            else:
+                self.response.set_status(304)
             return
+
         exec(base64.b64decode(___job.definitions), globals())
         globals().update(pickle.loads(base64.b64decode(___job.context)))
 
