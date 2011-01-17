@@ -2,7 +2,7 @@
 
 * http://github.com/tagomoris/remote_driver
 
-This library works with Google App Engine SDK Python 1.4.0.
+This library works with Google App Engine SDK Python 1.4.0 or later.
 
 ## DESCRIPTION
 
