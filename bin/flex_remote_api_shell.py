@@ -15,10 +15,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
-"""An interactive python shell that uses remote_api, with flex_remote_api calls.
+"""An interactive python shell that uses remote_api, with remote_driver calls.
 
 Usage:
-  flex_remote_api_shell.py APPENGINE_SDK_PATH APPID [PATH]
+  remote_driver_shell.py APPENGINE_SDK_PATH APPID [PATH]
 """
 
 import os
@@ -91,12 +91,12 @@ from google.appengine.tools import appengine_rpc
 
 HISTORY_PATH = os.path.expanduser('~/.remote_api_shell_history')
 DEFAULT_PATH = '/_ah/remote_api'
-BANNER = """App Engine remote_api shell with flex_remote_api_shell
+BANNER = """App Engine remote_api shell with remote_driver_shell
 Python %s
 The db, users, urlfetch, and memcache modules are imported.""" % sys.version
 
 
-class FlexRemoteApiJob(db.Model):
+class RemoteDriverJob(db.Model):
     created_at = db.DateTimeProperty(auto_now_add=True)
     started_at = db.DateTimeProperty()
     finished_at = db.DateTimeProperty()
@@ -194,7 +194,7 @@ def __gather_definitions():
 def __select_globals_to_send(context_dict):
     DESELECT_KEYS = ['BANNER', 'CURRENT_DIR_PATH', 'DEFAULT_PATH', 'EXTRA_PATHS', 'HISTORY_PATH', 'SDK_PATH',
                      '__builtins__', '__doc__', '__file__', '__name__',
-                     '__flex_remote_api_server', '__readline_history_session_start', '__remote_api_auth_pair', '__running_job_id_list',
+                     '__remote_driver_server', '__readline_history_session_start', '__remote_api_auth_pair', '__running_job_id_list',
                      '__readline_history_lines',
                      'version_tuple',
                      'main',
@@ -214,10 +214,10 @@ def __select_globals_to_send(context_dict):
         selected[k] = v
     return selected
 
-__flex_remote_api_server = None
+__remote_driver_server = None
 
 def __run_in_remote(b64_eval_line):
-    job = FlexRemoteApiJob(
+    job = RemoteDriverJob(
         definitions = base64.b64encode(__gather_definitions()),
         context = base64.b64encode(pickle.dumps(__select_globals_to_send(globals()))),
         eval_line = b64_eval_line,
@@ -225,8 +225,8 @@ def __run_in_remote(b64_eval_line):
     )
     job.put()
     job_id = job.key().id()
-    taskqueue.add(queue_name='FlexRemoteApiJob',
-                  url='/_ex_ah/flex_remote_api/execute',
+    taskqueue.add(queue_name='RemoteDriverJob',
+                  url='/_ex_ah/remote_driver/execute',
                   params={'id':str(job_id)})
     return job
 
@@ -235,11 +235,11 @@ def __wait_remote_jobs(waiting_jobs):
     running = True
     while running:
         time.sleep(0.5)
-        jobs = FlexRemoteApiJob.get_by_id(waiting_jobs)
+        jobs = RemoteDriverJob.get_by_id(waiting_jobs)
         if reduce(lambda x,y: x and (y.finished_at or y.retries > 0), jobs, True):
             running = False
     results = []
-    for job in FlexRemoteApiJob.get_by_id(waiting_jobs):
+    for job in RemoteDriverJob.get_by_id(waiting_jobs):
         if job.finished_at:
             delta = job.finished_at - job.started_at
             print "job id: %d in %f sec" % (job.key().id(), (delta.seconds * 1.0 + delta.microseconds / 1000000.0))
@@ -363,17 +363,17 @@ def main(argv):
         servername = '%s.appspot.com' % (appid,)
     rpc_server = appengine_rpc.HttpRpcServer(servername,
                                              __cached_auth_func,
-                                             remote_api_stub.GetUserAgent() + ' flex_remote_api_shell/0.0',
+                                             remote_api_stub.GetUserAgent() + ' remote_driver_shell/1.0',
                                              remote_api_stub.GetSourceName(),
                                              save_cookies=True,
                                              debug_data=False,
                                              secure=options.secure)
-    global __flex_remote_api_server
-    __flex_remote_api_server = rpc_server
+    global __remote_driver_server
+    __remote_driver_server = rpc_server
 
-    os.environ['SERVER_SOFTWARE'] = 'Development (flex_remote_api_shell)/0.0'
+    os.environ['SERVER_SOFTWARE'] = 'Development (remote_driver_shell/1.0)'
 
-    sys.ps1 = '%s/flex> ' % appid
+    sys.ps1 = '%s/driver> ' % appid
     if readline:
         readline.parse_and_bind('tab: complete')
         atexit.register(lambda: readline.write_history_file(HISTORY_PATH))

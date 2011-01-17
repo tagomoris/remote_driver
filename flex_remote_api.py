@@ -16,7 +16,7 @@ import datetime
 import pickle
 import base64
 
-class FlexRemoteApiJob(db.Model):
+class RemoteDriverJob(db.Model):
     created_at = db.DateTimeProperty(auto_now_add=True)
     started_at = db.DateTimeProperty()
     finished_at = db.DateTimeProperty()
@@ -28,9 +28,9 @@ class FlexRemoteApiJob(db.Model):
     # start-stop-position, and so on...
 
 
-class FlexRemoteApiExecuteCallHandler(webapp.RequestHandler):
+class RemoteDriverExecuteCallHandler(webapp.RequestHandler):
     def post(self):
-        ___job = FlexRemoteApiJob.get_by_id(int(self.request.get('id')))
+        ___job = RemoteDriverJob.get_by_id(int(self.request.get('id')))
         if not ___job:
             self.response.set_status(404)
             return
@@ -60,7 +60,7 @@ class FlexRemoteApiExecuteCallHandler(webapp.RequestHandler):
         
 
 application = webapp.WSGIApplication([
-    ('/_ex_ah/flex_remote_api/execute', FlexRemoteApiExecuteCallHandler),
+    ('/_ex_ah/remote_driver/execute', RemoteDriverExecuteCallHandler),
     ],
     debug=True)
 
