@@ -68,7 +68,10 @@ import getpass
 import optparse
 
 # readline is needed
-import readline
+try:
+    import readline
+except ImportError:
+    readline = None
 import re
 import codeop
 import pickle
@@ -138,13 +141,22 @@ def __check_executable_definition(lines):
 
 
 __readline_history_session_start = 0
+__readline_history_lines = []
+
 
 def __gather_definitions():
     definition_lines = []
     block = []
     block_force_continuous = False
-    for index in range(__readline_history_session_start, readline.get_current_history_length()):
-        line = readline.get_history_item(index)
+    if readline:
+        def __get_line():
+            for index in range(__readline_history_session_start, readline.get_current_history_length()):
+                yield readline.get_history_item(index)
+    else:
+        def __get_line():
+            for line in __readline_history_lines:
+                yield line
+    for line in __get_line():
         if len(block) > 0 and (block_force_continuous or line.startswith(' ')):
             r = __try_compile(block + [line])
             if r is True:
@@ -183,6 +195,7 @@ def __select_globals_to_send(context_dict):
     DESELECT_KEYS = ['BANNER', 'CURRENT_DIR_PATH', 'DEFAULT_PATH', 'EXTRA_PATHS', 'HISTORY_PATH', 'SDK_PATH',
                      '__builtins__', '__doc__', '__file__', '__name__',
                      '__flex_remote_api_server', '__readline_history_session_start', '__remote_api_auth_pair', '__running_job_id_list',
+                     '__readline_history_lines',
                      'version_tuple',
                      'main',
                      'remote_sync', 'remote_async_results', 'remote_job_results',
@@ -286,6 +299,9 @@ def __break_parenthesis(funcname, line):
 
 def __magic_input(prompt=''):
     line = raw_input(prompt)
+    if not readline:
+        global __readline_history_lines
+        __readline_history_lines.append(line)
     if line == 'remote_async_wait':
         return '__wait_async_remote_jobs()'
     elif reduce(lambda x,y: x or line.startswith(y + ' '), ['remote', 'remote_sync', 'remote_async'], False):
@@ -358,13 +374,14 @@ def main(argv):
     os.environ['SERVER_SOFTWARE'] = 'Development (flex_remote_api_shell)/0.0'
 
     sys.ps1 = '%s/flex> ' % appid
-    readline.parse_and_bind('tab: complete')
-    atexit.register(lambda: readline.write_history_file(HISTORY_PATH))
-    if os.path.exists(HISTORY_PATH):
-        readline.read_history_file(HISTORY_PATH)
-        readline.add_history('')
-        global __readline_history_session_start
-        __readline_history_session_start = readline.get_current_history_length()
+    if readline:
+        readline.parse_and_bind('tab: complete')
+        atexit.register(lambda: readline.write_history_file(HISTORY_PATH))
+        if os.path.exists(HISTORY_PATH):
+            readline.read_history_file(HISTORY_PATH)
+            readline.add_history('')
+            global __readline_history_session_start
+            __readline_history_session_start = readline.get_current_history_length()
 
     code.interact(banner=BANNER, readfunc=__magic_input, local=globals())
 
